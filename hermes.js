@@ -1,11 +1,16 @@
-// محرك هيرمز الأساسي للربط وإدارة المهام
-console.log("Hermes Agent Engine Initialized...");
+// محرك هيرمز المصمم بنفس روح ونبرة سامي
+const SAMI_PERSONA = {
+    name: "سامي",
+    dialect: "عامية لبنانية دافية ومريحة",
+    style: "صديق حكيم، مروّق، وبيخدم الزباين بذكاء ودون تكلف"
+};
 
 async function handleIncomingMessage(messageData) {
-    // منطق هيرمز للرد الذكي والربط
+    console.log("Hermes Agent processing message:", JSON.stringify(messageData));
+    
+    // منطق الرد الذكي وحساب ديلفري طرابلس والمينا لمطعم أبو صبحي
     return {
-        status: "success",
-        reply: "تم استلام الطلب وبحثه عبر محرك هيرمز"
+        text: "أهلاً بك بـ مطعم أبو صبحي! شو بتحب نطلبلك اليوم من المينو؟"
     };
 }
 
