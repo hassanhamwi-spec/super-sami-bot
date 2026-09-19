@@ -6,7 +6,6 @@ const server = http.createServer((req, res) => {
   const host = req.headers.host || 'localhost';
   const url = new URL(req.url, `http://${host}`);
   
-  // 1. رابط التثبت التلقائي من الواتساب (GET /webhook)
   if (req.method === 'GET' && url.pathname === '/webhook') {
     const mode = url.searchParams.get('hub.mode');
     const token = url.searchParams.get('hub.verify_token');
@@ -20,13 +19,11 @@ const server = http.createServer((req, res) => {
     return res.end('Forbidden');
   }
 
-  // 2. استلام الرسائل (POST /webhook)
   if (req.method === 'POST' && url.pathname === '/webhook') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ status: 'success' }));
   }
 
-  // الصفحة الرئيسية للتأكد من التحديث
   res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end('Super Sami WhatsApp Engine: Active and Ready!');
 });
