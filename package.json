@@ -1,0 +1,6 @@
+{
+  "name": "super-sami-bot", "version": "2.0.0", "private": true,
+  "description": "Owner-only WhatsApp webhook gateway; agent processing disabled until configured",
+  "main": "index.js", "engines": { "node": ">=22" },
+  "scripts": { "start": "node index.js", "test": "node --test test/*.test.js" }
+}

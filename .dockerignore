@@ -1,0 +1,9 @@
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!index.js
+!cloud_db_probe.py
+!requirements-probe.txt
+!src/
+!src/gateway.js
