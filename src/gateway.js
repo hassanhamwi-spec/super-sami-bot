@@ -9,7 +9,7 @@ function equal(a, b) {
 }
 function runDatabaseProbe(env) {
   return new Promise(resolve => {
-    execFile('python3', ['cloud_db_probe.py'], { env, timeout: 3000, maxBuffer: 16 * 1024, windowsHide: true }, (error, stdout) => {
+    execFile('python3', ['cloud_db_probe.py'], { env, timeout: 15000, maxBuffer: 16 * 1024, windowsHide: true }, (error, stdout) => {
       if (error) return resolve(false);
       try {
         const result = JSON.parse(stdout);
@@ -22,7 +22,7 @@ function runDatabaseProbe(env) {
 }
 function createReadinessCheck(options = {}) {
   const check = options.check || (() => runDatabaseProbe(options.env || process.env));
-  const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : 3000;
+  const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : 15000;
   const cacheMs = Number.isFinite(options.cacheMs) && options.cacheMs >= 0 ? options.cacheMs : 5000;
   const now = options.now || Date.now;
   let cached;

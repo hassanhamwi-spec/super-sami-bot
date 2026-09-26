@@ -54,6 +54,15 @@ test('database unavailable returns 503 while health remains independent', async 
   assert.deepEqual(await ready.json(), { status: 'not_ready', database_ready: false, webhook_configured: true, processing_enabled: false });
   assert.equal(checks, 1);
 });
+test('default database readiness timeout allows checks slower than three seconds', async t => {
+  const { get } = await setup(t, { readyTimeoutMs: undefined, checkDatabase: async () => {
+    await new Promise(resolve => setTimeout(resolve, 3100));
+    return true;
+  } });
+  const ready = await get('/readyz');
+  assert.equal(ready.status, 200);
+  assert.equal((await ready.json()).database_ready, true);
+});
 test('database readiness timeout returns 503', async t => {
   const { get } = await setup(t, { checkDatabase: () => new Promise(() => {}), readyTimeoutMs: 10 });
   const ready = await get('/readyz');
