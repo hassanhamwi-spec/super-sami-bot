@@ -6,7 +6,7 @@ const { createGateway } = require('../src/gateway');
 const env = { VERIFY_TOKEN: 'local-test-token', APP_SECRET: 'local-test-secret', OWNER_WHATSAPP_NUMBER: '96170000000', WHATSAPP_PHONE_NUMBER_ID: '123456' };
 const event = (id = 'wamid.test', from = env.OWNER_WHATSAPP_NUMBER, phone = env.WHATSAPP_PHONE_NUMBER_ID) => ({ object: 'whatsapp_business_account', entry: [{ changes: [{ field: 'messages', value: { messaging_product: 'whatsapp', metadata: { phone_number_id: phone }, messages: [{ id, from, type: 'text', text: { body: 'test' } }] } }] }] });
 async function setup(t, options = {}) {
-  const server = createGateway({ env, ...options });
+  const server = createGateway({ env, checkDatabase: async () => true, readyTimeoutMs: 50, readyCacheMs: 0, ...options });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve); }));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -39,10 +39,42 @@ test('health minimal, readiness honest, unknown routes and methods rejected', as
   assert.deepEqual(health, { status: 'ok', version: '2.0.0', commit: 'unknown' });
   const ready = await get('/readyz');
   assert.equal(ready.status, 200);
-  assert.deepEqual(await ready.json(), { status: 'ready', database_verified_at_startup: true, webhook_configured: true, processing_enabled: false });
+  assert.deepEqual(await ready.json(), { status: 'ready', database_ready: true, webhook_configured: true, processing_enabled: false });
   assert.equal((await get('/')).status, 404);
   assert.equal((await fetch(base + '/webhook', { method: 'PUT' })).status, 405);
   assert.equal((await fetch(base + '/healthz', { method: 'POST' })).status, 405);
+});
+test('database unavailable returns 503 while health remains independent', async t => {
+  let checks = 0;
+  const { get } = await setup(t, { checkDatabase: async () => { checks++; return false; } });
+  const health = await get('/healthz');
+  assert.equal(health.status, 200); assert.equal(checks, 0);
+  const ready = await get('/readyz');
+  assert.equal(ready.status, 503);
+  assert.deepEqual(await ready.json(), { status: 'not_ready', database_ready: false, webhook_configured: true, processing_enabled: false });
+  assert.equal(checks, 1);
+});
+test('database readiness timeout returns 503', async t => {
+  const { get } = await setup(t, { checkDatabase: () => new Promise(() => {}), readyTimeoutMs: 10 });
+  const ready = await get('/readyz');
+  assert.equal(ready.status, 503);
+  assert.equal((await ready.json()).database_ready, false);
+});
+test('database readiness failure never leaks secret details', async t => {
+  const secret = 'postgresql://private-user:private-password@private-host/db';
+  const { get } = await setup(t, { checkDatabase: async () => { throw new Error(secret); } });
+  const ready = await get('/readyz');
+  const body = await ready.text();
+  assert.equal(ready.status, 503);
+  assert.ok(!body.includes(secret));
+  assert.ok(!body.includes('private-password'));
+});
+test('concurrent readiness requests share one short-lived database check', async t => {
+  let checks = 0;
+  const { get } = await setup(t, { readyCacheMs: 1000, checkDatabase: async () => { checks++; await new Promise(resolve => setTimeout(resolve, 10)); return true; } });
+  const responses = await Promise.all([get('/readyz'), get('/readyz'), get('/readyz')]);
+  assert.ok(responses.every(response => response.status === 200));
+  assert.equal(checks, 1);
 });
 test('valid signed messages return 503 without processor, not false success', async t => {
   const { post } = await setup(t);

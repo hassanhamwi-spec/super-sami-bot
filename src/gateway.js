@@ -1,10 +1,54 @@
 'use strict';
 const http = require('node:http');
+const { execFile } = require('node:child_process');
 const { createHmac, timingSafeEqual } = require('node:crypto');
 const { version } = require('../package.json');
 function equal(a, b) {
   const x = Buffer.from(a || ''), y = Buffer.from(b || '');
   return x.length === y.length && timingSafeEqual(x, y);
+}
+function runDatabaseProbe(env) {
+  return new Promise(resolve => {
+    execFile('python3', ['cloud_db_probe.py'], { env, timeout: 3000, maxBuffer: 16 * 1024, windowsHide: true }, (error, stdout) => {
+      if (error) return resolve(false);
+      try {
+        const result = JSON.parse(stdout);
+        resolve(result.status === 'PASS' && result.checks?.connected === true && result.checks?.select_1 === true && result.checks?.tls_required === true);
+      } catch {
+        resolve(false);
+      }
+    });
+  });
+}
+function createReadinessCheck(options = {}) {
+  const check = options.check || (() => runDatabaseProbe(options.env || process.env));
+  const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0 ? options.timeoutMs : 3000;
+  const cacheMs = Number.isFinite(options.cacheMs) && options.cacheMs >= 0 ? options.cacheMs : 5000;
+  const now = options.now || Date.now;
+  let cached;
+  let validUntil = 0;
+  let inFlight;
+  return async () => {
+    const current = now();
+    if (cached !== undefined && current < validUntil) return cached;
+    if (inFlight) return inFlight;
+    inFlight = new Promise(resolve => {
+      let settled = false;
+      const finish = value => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value === true);
+      };
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      Promise.resolve().then(check).then(finish, () => finish(false));
+    }).then(value => {
+      cached = value;
+      validUntil = now() + cacheMs;
+      return value;
+    }).finally(() => { inFlight = undefined; });
+    return inFlight;
+  };
 }
 function createGateway(options = {}) {
   const env = options.env || process.env;
@@ -21,7 +65,7 @@ function createGateway(options = {}) {
   const commit = /^[a-f0-9]{7,40}$/i.test(env.RENDER_GIT_COMMIT || '') ? env.RENDER_GIT_COMMIT : 'unknown';
   const webhookConfigured = () => Boolean(verifyToken && appSecret && /^\d{7,15}$/.test(owner) && /^\d+$/.test(phoneId));
   const processingEnabled = () => typeof handleEvent === 'function';
-  const ready = () => true;
+  const ready = createReadinessCheck({ check: options.checkDatabase, env, timeoutMs: options.readyTimeoutMs, cacheMs: options.readyCacheMs, now: options.readyNow });
   function reply(res, code, value, plain = false) {
     res.writeHead(code, { 'Content-Type': plain ? 'text/plain; charset=utf-8' : 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     res.end(plain ? value : JSON.stringify(value));
@@ -43,9 +87,10 @@ function createGateway(options = {}) {
       if (url.pathname === '/healthz' || url.pathname === '/readyz') {
         if (req.method !== 'GET') return reply(res, 405, { error: 'method_not_allowed' });
         if (url.pathname === '/healthz') return reply(res, 200, { status: 'ok', version, commit });
-        return reply(res, ready() ? 200 : 503, {
-          status: ready() ? 'ready' : 'not_ready',
-          database_verified_at_startup: true,
+        const databaseReady = await ready();
+        return reply(res, databaseReady ? 200 : 503, {
+          status: databaseReady ? 'ready' : 'not_ready',
+          database_ready: databaseReady,
           webhook_configured: webhookConfigured(),
           processing_enabled: processingEnabled()
         });
