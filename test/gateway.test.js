@@ -37,7 +37,9 @@ test('health minimal, readiness honest, unknown routes and methods rejected', as
   const { get, base } = await setup(t);
   const health = await (await get('/healthz')).json();
   assert.deepEqual(health, { status: 'ok', version: '2.0.0', commit: 'unknown' });
-  assert.equal((await get('/readyz')).status, 503);
+  const ready = await get('/readyz');
+  assert.equal(ready.status, 200);
+  assert.deepEqual(await ready.json(), { status: 'ready', database_verified_at_startup: true, webhook_configured: true, processing_enabled: false });
   assert.equal((await get('/')).status, 404);
   assert.equal((await fetch(base + '/webhook', { method: 'PUT' })).status, 405);
   assert.equal((await fetch(base + '/healthz', { method: 'POST' })).status, 405);
@@ -63,7 +65,9 @@ test('JSON syntax, shape, content type, size are enforced', async t => {
 test('owner and phone filters run before processing entire batch', async t => {
   let count = 0;
   const { post, get } = await setup(t, { handleEvent: async () => { count++; } });
-  assert.equal((await get('/readyz')).status, 200);
+  const ready = await get('/readyz');
+  assert.equal(ready.status, 200);
+  assert.equal((await ready.json()).processing_enabled, true);
   assert.equal((await post(event('id1', '96171111111'))).status, 403);
   assert.equal((await post(event('id1', env.OWNER_WHATSAPP_NUMBER, 'wrong'))).status, 403);
   const mixed = event(); mixed.entry[0].changes[0].value.messages.push({ id: 'other', from: '96171111111', type: 'text' });

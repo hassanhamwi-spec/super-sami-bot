@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: super-sami-hermes
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: VERIFY_TOKEN
+        sync: false
+      - key: APP_SECRET
+        sync: false
+      - key: OWNER_WHATSAPP_NUMBER
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false

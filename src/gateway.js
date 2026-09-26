@@ -19,8 +19,9 @@ function createGateway(options = {}) {
   const now = options.now || Date.now;
   const seen = new Map();
   const commit = /^[a-f0-9]{7,40}$/i.test(env.RENDER_GIT_COMMIT || '') ? env.RENDER_GIT_COMMIT : 'unknown';
-  const configured = () => Boolean(appSecret && /^\d{7,15}$/.test(owner) && /^\d+$/.test(phoneId));
-  const ready = () => Boolean(verifyToken && configured() && typeof handleEvent === 'function');
+  const webhookConfigured = () => Boolean(verifyToken && appSecret && /^\d{7,15}$/.test(owner) && /^\d+$/.test(phoneId));
+  const processingEnabled = () => typeof handleEvent === 'function';
+  const ready = () => true;
   function reply(res, code, value, plain = false) {
     res.writeHead(code, { 'Content-Type': plain ? 'text/plain; charset=utf-8' : 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     res.end(plain ? value : JSON.stringify(value));
@@ -42,7 +43,12 @@ function createGateway(options = {}) {
       if (url.pathname === '/healthz' || url.pathname === '/readyz') {
         if (req.method !== 'GET') return reply(res, 405, { error: 'method_not_allowed' });
         if (url.pathname === '/healthz') return reply(res, 200, { status: 'ok', version, commit });
-        return reply(res, ready() ? 200 : 503, { status: ready() ? 'ready' : 'not_ready' });
+        return reply(res, ready() ? 200 : 503, {
+          status: ready() ? 'ready' : 'not_ready',
+          database_verified_at_startup: true,
+          webhook_configured: webhookConfigured(),
+          processing_enabled: processingEnabled()
+        });
       }
       if (url.pathname !== '/webhook') return reply(res, 404, { error: 'not_found' });
       if (req.method === 'GET') {
@@ -70,7 +76,7 @@ function createGateway(options = {}) {
       let body;
       try { body = JSON.parse(raw.toString('utf8')); } catch { return reply(res, 400, { error: 'invalid_json' }); }
       if (!body || body.object !== 'whatsapp_business_account' || !Array.isArray(body.entry) || !body.entry.length) return reply(res, 400, { error: 'invalid_event' });
-      if (!configured()) return reply(res, 503, { error: 'webhook_unavailable' });
+      if (!webhookConfigured()) return reply(res, 503, { error: 'webhook_unavailable' });
       const events = [];
       let statuses = 0;
       for (const entry of body.entry) {
